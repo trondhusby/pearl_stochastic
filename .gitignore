@@ -11,3 +11,4 @@
 *.R#
 credentials.json
 *.rdata
+docs/pearl_stochastic_cache
