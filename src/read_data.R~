@@ -1,0 +1,13 @@
+## title: reading data
+## date: 27.03.2020
+## author: trond
+
+## house keeping
+library(data.table)
+library(cbsodataR)
+
+## read data
+cbs_dt <- data.table(cbs_get_toc(language="nl"))
+
+cbd_dt[grepl('', Title), Identifier]
+

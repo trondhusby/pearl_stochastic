@@ -1,0 +1,9 @@
+## title: read in data on moves
+## date: 27.03
+## author: trond
+
+## house keeping
+import cbsodata
+
+print('Hello')
+
