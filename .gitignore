@@ -1,0 +1,10 @@
+*.xlsm
+*.R~
+*.py~
+*.rds
+*.Rds
+*.Rdata
+*.RData
+*.R#
+credentials.json
+*.rdata
