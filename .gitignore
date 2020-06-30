@@ -1,10 +1,13 @@
 *.xlsm
 *.R~
 *.py~
+*.tex~
 *.rds
 *.Rds
 *.Rdata
 *.RData
+*.rdx
+*.rdb
 *.R#
 credentials.json
 *.rdata
