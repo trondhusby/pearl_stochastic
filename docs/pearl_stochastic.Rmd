@@ -685,48 +685,37 @@ Ik stel voor om de regionale factor, $F_{i,t}^{g}$ en het aantal nieuwbouwwoning
 
 ## Lee Carter modellen
 
-Om te beginnen, definieren we eerst een demografisch variabel $Y_{i,t}$.
-
-$$
-\begin{aligned}
-Y_{i,t} &= \begin{bmatrix}  F_{i,t}^{g} \\ W_{i,t} \end{bmatrix}
-\end{aligned}
-$$
-
-
 In de literatuur worden Lee Carter modellen gebruikt voor leeftijd-specifieke processen, maar hier gebruiken we ze ook voor processen met een regio-dimensie. Dit betekent dat $d$ bevat zowel leeftijd $x$ als regio $i$. De processen die we met het model beschrijven zijn de regionale factor en woningbouwproductie per regio. Het Lee-Carter model wordt verder gespecificeerd als een functie van de regio-specifieke parameters $\alpha_{i}$ (level) en $\beta_{i}$ (slope) en de tijdspecifieke parameters $k_{t}$.
 
-De regionale factor is, in alle regio's bijna gelijk voor mannen en vrouwen. Daarom schatten we een Lee Carter model voor de regionale factor, waar $\delta_{g}$ de niveauverschil tussen mannen en vrouwen aangeeft.
+De regionale factor is, in alle regio's bijna gelijk voor mannen en vrouwen. Daarom schatten we èèn Lee Carter model voor de regionale factor, met verschillend intercept $\delta_{g}$ voor mannen en vrouwen. Het model gebruikt voor de schatting van de regionale factor is een generalised linear Gaussian model log link. Het model kunnen we als volgt schrijven:
 
 $$
 \begin{aligned}
-\log F_{i,t}^{g} &= \alpha_{i}^{F} + \delta_{g}^{F} + \beta_{i}^{F} k_{t}^{F} + \varepsilon_{i,g,t}^{F}
-\end{aligned}
-$$
-
-Het Lee Carter model voor woningbouw kunnen we als volgt schrijven:
-
-$$
-\begin{aligned}
-\log W_{i,t} &= \alpha_{i}^{W}   + \beta_{i}^{W} k_{t}^{W} + \varepsilon_{i,t}^{W}
-\end{aligned}
-$$ee
-
-
-Als we zien van de vergelijkingen wordt de dynamiek in de tijsreeks volledig opgevangen door de geschatte pure tijdstrend $k_{t}$. $k_{t}$ is een vector met de volgende 2 elementen
-
-$$
-\begin{aligned}
-k_{t} &= \begin{bmatrix}  f_{t} \\ w_{t} \end{bmatrix}
+&\log \lambda_{i,g,t} = \alpha_{i}^{F} + \delta_{g}^{F} + \beta_{i}^{F} k_{t}^{F} + \varepsilon_{i,g,t}^{F} \\
+ & F_{i,g,t} \sim \mathcal{N} \left( \lambda_{i,g,t} \text{, } \varepsilon_{i,g,t}^{F} \right)
 \end{aligned}
 $$
 
 
-Hoe zit dit allemaal in elkaar? Een klein voorbeeld met een een-stap-vooruit voorspelling is wellicht handig. Eerst worden de Lee Carter modellen geschat, waardoor we schattingen van $\hat{\alpha}_{d}$ en $\hat{\beta}_{d}$ en de pure tijdstrend $\hat{k}_{t}$ krijgen. Vervolgens maken we een een-stap-vooruit voorspelling van $\hat{k}_{t+1}$ en we kunnen de regio-specifieke $Y_{i,t+1}$ berekenen met de geschatte parameters van de Lee Carter modellen als
+Het Lee Carter model voor woningbouw wordt geschat als een generalised linear Poisson model met log link. Het model kunnen we als volgt schrijven:
 
 $$
-\hat{Y}_{i,t+1}  = \exp{(\hat{\alpha}_{i} + \hat{\beta}_{i} \hat{k}_{t+1})}
+\begin{aligned}
+&\log \mu_{i,t} = \alpha_{i}^{W}   + \beta_{i}^{W} k_{t}^{W} + \varepsilon_{i,t}^{W} \\
+& W_{i,t} \sim \text{Poisson} \left( \mu_{i,t} \right)
+\end{aligned}
 $$
+
+
+Hoe zit dit allemaal in elkaar? Een klein voorbeeld met een een-stap-vooruit voorspelling is wellicht handig. Eerst worden de Lee Carter modellen geschat, waardoor we schattingen van de parameters en de pure tijdstrend krijgen. Vervolgens maken we een een-stap-vooruit voorspelling van $\hat{k}_{t+1}$ en we kunnen de regionale factor en nieuwbouwwoningen in $t+1$ berekenen met de geschatte parameters van de Lee Carter modellen als
+
+$$
+\begin{aligned}
+&\hat{\lambda}_{i,g,t+1}  = \exp \left( \hat{\alpha}_{i}^{F} + \hat{\delta}_{g}^{F} + \hat{\beta}_{i}^{F} \hat{k}_{t+1}^{F} \right) \\
+&\hat{\mu}_{i,t} = \exp \left( \hat{\alpha}_{i}^{W} + \hat{\beta}_{i}^{W} \hat{k}_{t+1}^{W} \right)
+\end{aligned}
+$$
+
 
 
 ## Schattingsmethode
@@ -737,6 +726,14 @@ Omdat de eenheden van de afhankelijke variabelen wat verschillen zijn de Lee Car
 
 
 ## Voorspellingen
+Als we zien van de vergelijkingen boven wordt de dynamiek in de tijsreeks volledig opgevangen door de geschatte pure tijdstrend $k_{t}$. $k_{t}$ is een vector met de volgende 2 elementen
+
+$$
+\begin{aligned}
+k_{t} &= \begin{bmatrix}  k_{t}^{F} \\ k_{t}^{W} \end{bmatrix}
+\end{aligned}
+$$
+
 Om $k_{t}$ te kunnen voorspellen maken we gebruik van een univariate exponential smoothing model [@hyndman2002state]. Hier gebruiken we de functie *ets()* in R waarmee het volgende single-source of error state space model wordt geschat
 
 $$
@@ -760,9 +757,9 @@ In deze sectie worden resultaten van een proefrun met het model beschreven. Hoof
 
 In deze notitie maken we een Monte Carlo analyse van de risikobevolking met 100 simulaties van $k_{t}$ tot 2040. Het genereren van simulaties is vrijwel volledig automatisch en het model schaalt daarom heel makkelijk; op een computer met meer geheugen kunnen we meer dan 100 simulaties draaien zonder dat dat ekstra werk oplevert.
 
-De data gebruikt om de Lee Carter modellen te schatten betreeft tijdsreeksen over verhuizingen, bevolking en woningbouw tussen 1995 en 2018 gebruikt; alles beschikbaar van CBS Open Data. Het gaat over de volgende series: migratie 60048ned, bevolking 70072ned, woningbouw 37713. We gebruiken de leeftijdsgroepen uit de series 60048ned en COROP als regionaal niveau. Ik interpreteer tussengemeentenverhuisde personen als tussenCOROPverhuisde personen binnengemeentenverhuisde personen als binnenCOROPverhuisde personen. Verhuizingen worden gedefinieerd als de som van binnenregionale verhuizingen en vertrek, net als in PEARL.
+De data gebruikt om de Lee Carter modellen te schatten betreeft tijdsreeksen over verhuizingen, bevolking en woningbouw tussen 1995 en 2017 op gemeenteniveau gebruikt; alles beschikbaar van CBS Open Data. Het gaat over de volgende series: migratie 60048ned, bevolking 70072ned, woningbouw 37713. We gebruiken de leeftijdsgroepen uit de series 60048ned en gemeente als regionaal niveau. Alle reeksen zijn gecorrigeerd voor gemeentelijke herindelingen volgens de methodiek gebruikt door het PBL en het CBS. Verhuizingen worden gedefinieerd als de som van binnenregionale verhuizingen en vertrek - net als in PEARL.
 
-Voor de tijdsreeksen van $\bar{M}_{i,t}^{g}$ en $W_{i,t}^{g}$ gebruik ik een 3-jaar voortschrijdend gemiddelde, wat betekent dat de tijdsreeks voor de regional factor en voor nieuwbouwwoningen van 1998 tot 2018 loopt. De risikobevolking is berekent als het gemiddelde van de bevolking aan het begin en aan het einde van het jaar.
+Voor de tijdsreeksen van $\bar{M}_{i,t}^{g}$ en $W_{i,t}$ worden 3-jaar voortschrijdend gemiddelde gebruikt, wat betekent dat de tijdsreeks voor de regional factor en voor nieuwbouwwoningen van 1998 tot 2017 loopt. De risikobevolking is berekent als het gemiddelde van de bevolking aan het begin en aan het einde van het jaar.
 
 De kant van vestiging wordt zo simpel mogelijk gehouden; in een volschala run zal vestiging immers worden bepaald met PEARL. In deze notitie bereken ik de vestigingskant $\pi_{i,t}$ in regio $i$ als het aandeel nieuwbouwwoningen van de regio in het totaal aantal nieuwbouwwoningen
 
@@ -813,7 +810,7 @@ ggplot(melt(tmp_dt,
 
 ## Resultaten van het model van vergelijkingen (1) tot (5)
 
-De simulaties van de vorige sectie worden gecombineerd met het migratiemodel in vergelijkingen (1) - (5) om de ontwikkeling van de risikobevolking tot 2040 te simuleren. De omvang van de totale risikobevolking in 4 COROP-regio's. Als voorbeeld kiezen we de vier COROP-regio's met de grote steden. De grijze vlakken in de figuren geven een 80 \% bandbreedte aan en de vaste lijn het gemiddelde van alle simulaties.
+De simulaties van de vorige sectie worden gecombineerd met het migratiemodel in vergelijkingen (1) - (5) om de ontwikkeling van de risikobevolking tot 2040 te simuleren. Om de resultaten te laten zien kiezen we als voorbeeld de vier gemeenten van de groote steden. De grijze vlakken in de figuren geven een 80 \% bandbreedte aan en de vaste lijn het gemiddelde van alle simulaties.
 
 Om de relatieve invloed van de verschillende variabelen (regionale factor; nieuwbouwwoningen) op de voorgespelde risikobevolking te ontrafelen kunnen we switches introduceren. Deze swiches verzamelen we in een vector $\gamma = \{ \gamma_{f}, \gamma_{w} \}$ van binaire variabelen. De h-stap-vooruit voorspelling, $\tilde{k}_{t+h,s}$ kunnen we definieren als
 
@@ -860,40 +857,10 @@ ggplot(melt(out[code %in% code_sel,
 
 ```
 
-Figuur \@ref(fig:results-net-migration-age) geeft de netto migratie per leeftijd aan voor dezelfde vier groote regio's, waardoor verandering door de tijd al inbegrepen in het voorspellingsinterval is. Daarom zien we ook links in het figuur, waar alle $\gamma$ zijn 0, een interval. Maar we zien ook het interval toenemen als we variabelen laten varieren, net zoals in Figuur \@ref(fig:results-net-migration-time).
 
-```{r results-net-migration-age, fig.cap = "Netto migratie in s' Gravenhage (518), Amsterdam (363), Utrecht (344) en Rotterdam (599)"}
-
-ggplot(melt(out[code %in% code_sel,
-           net_migration,
-           by = c('code', 'leeftijd', 'run', 'gamma', 'year')
-           ],
-           id.vars = c('code', 'leeftijd', 'run', 'year', 'net_migration')
-           )[,
-               {
-                   ## tmp = quantile(V1)
-                   ## list(tmp[2], tmp[3], tmp[4])
-                   tmp = quantile(net_migration, probs = seq(0, 1, by = 0.1))
-                   list(tmp[2], tmp[6], tmp[10])
-               },
-             by = c('code', 'variable', 'value', 'leeftijd')
-             ],
-       aes(leeftijd, V2, group = value)) +
-    geom_ribbon(aes(ymin = V1, ymax = V3), fill = 'grey') +
-    geom_line() +
-    facet_grid(code~value, scales = 'free') +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 90)) +
-    ylab('Netto migratie')
-
-```
-
-
-De ontwikkeling van de (totale) risikobevolking zijn te zien in Figuur \@ref(fig:results-regional). De zwarte lijnen in het figuur is de gemiddelde voorspelling en het grijz gebied om de lijn 80 procent onzekerheidsmarges. Aan de linkerkant in de figuur heeft woningbouw geen invloed op vestiging ($gamma = 0$); hier zien we dat de bevolkingsontwikkeling volledig wordt gedreven door het saldo. Hierdoor zijn de onzekerheidsmarges ook relatief klein.
+De ontwikkeling van de (totale) risikobevolking in de vier groote gemeenten is te zien in Figuur \@ref(fig:results-regional). De zwarte lijnen in het figuur is de gemiddelde voorspelling en het grijz gebied om de lijn 80 procent onzekerheidsmarges. Aan de linkerkant in de figuur heeft woningbouw geen invloed op vestiging ($gamma_{w} = 0$); hier zien we dat de bevolkingsontwikkeling bijna volledig wordt gedreven door verandering in het migratiesaldo. Hierdoor zijn de onzekerheidsmarges ook relatief klein. De bandbeedtes worden groter als we woningbouw ook laten varieren.
 
 ```{r results-regional, fig.cap = "Risikobevolking (totaal) in s' Gravenhage (518), Amsterdam (363), Utrecht (344) en Rotterdam (599)"}
-
-reg_sel <- c('CR23  ', 'CR26  ', 'CR17  ', 'CR29  ')
 
 ggplot(melt(out[code %in% code_sel,
            sum(risk_pop),
@@ -949,9 +916,9 @@ ggplot(out[code %in% code_sel & year %in% seq(2020, 2040, by = 10),
 
 # Conclusies, opmerkingen en hoe verder
 
-In dit document heb ik een voorstel gemaakt voor en stochastische simulatiemethode geschikt voor PEARL. De groote voordeel van deze methode is de dimensionaliteitsreductie: de test die ik hier heb gegraaid kunnen we vrij eenvoudig opschalen naar leeftijden en gemeenten in plaats van leeftijdsgroepen, gemeenten in plaats van COROP-regio's en meer simulaties. Zover ik weet is het Lee Carter model nooit toegepast op regionale prognoses, in dat opzicht is dit ook nieuw.
+In dit document heb ik een voorstel gemaakt voor en stochastische simulatiemethode geschikt voor PEARL. De groote voordeel van deze methode is de dimensionaliteitsreductie: de test die ik hier heb gegraaid kunnen we bijna direct toepassen in PEARL. Zover ik weet is het Lee Carter model nooit toegepast op regionale prognoses, in die opzicht is dit ook nieuw.
 
-De resultaten hier suggereren dat de meeste variatie in netto migratie en risikobevolking kwam door variatie in de regionale factor en in nieuwbouwwoningen, terwijl variatie in de leeftijdsspecifieke verhuizingen weinig effect had. Dit heeft gedeeltelijk te maken met het feit dat de variatie in verhuizingen voor leeftijden met een hoge verhuiskans vrij laag was (zie Figuren \@(fig:simulations-age-groups2) en \@(fig:simulations-age-groups3) in de Appendix). Een optie is om het Lee Carter model voor verhuizingen net wat anders te schatten of direct te werken met de verhuiskans. Een ander optie is om nationale leeftijdsspecifieke verhuizingen of verhuiskans weg te laten van deze analyse.
+De resultaten hier suggereren dat de meeste variatie in netto migratie en risikobevolking kwam door variatie verandering in nieuwbouwwoningen. Dit is een gevolg van het feit dat nieuwbouwwoningen een directe invloed heeft op de vestigingskans. In PEARL, waar woningbouw een ander rol heeft, is de relatieve invloed van die twee factoren anders.
 
 Dit document moet worden gezien als stap naar een 'proof-of-concept'. De resultaten in de vorige sectie laten met name zien hoe het zou kunnen werken in de context van PEARL, maar door de aannames zijn de resultaten ook niet erg realistisch. De geschatte Lee Carter modellen zouden we beter naar moeten kijken. Er zijn een aantal andere schattingsmethode's die wellicht nauwkeuriger zijn dan die die ik hier heb gebruikt. Bijvoorbeeld Structural Value Decomposition is een andere bekende optie hiervoor [@stoeldraijer2013impact].
 
@@ -983,7 +950,7 @@ ggplot(woon_dt[RegioS == 'NL01  '], aes(year, Nieuwbouwwoningen_91)) +
 ```
 
 
-```{r plot-results-regio1 ,fig.cap = "Parameters van het regiomodel", cache = T}
+```{r plot-results-regio1, fig.cap = "Parameters van het regiomodel: geschatte alpha en beta versus bevolking (log)", cache = T}
 
 ## settings for the alpha parameters in the
 alpha_params <- paste0("as.factor(code)", unique(inp_dt$code))
@@ -1010,6 +977,12 @@ p1 <- ggplot(rbind(data.table(reg = alpha_reg,
                               )), aes(log(pop), a)) +
   geom_point(aes(col = geslacht)) +
   geom_smooth(aes(col = geslacht)) +
+  theme(
+    legend.position = c(.95, .95),
+    legend.justification = c("right", "top"),
+    legend.box.just = "right",
+    legend.margin = margin(6, 6, 6, 6)
+    ) + 
   theme_bw()
 
 ## beta
@@ -1036,9 +1009,7 @@ grid.arrange(p1, p2)
 ```
 
 
-
-
-```{r plot-results-woning1 ,fig.cap = "Parameters van het woningmodel", cache = T}
+```{r plot-results-woning1, fig.cap = "Parameters van het woningmodel: geschatte alpha en beta versus bevolking (log)", cache = T}
 
 alpha_idx <- match(alpha_params, names(coefficients(LC.poisson.h)))
 alpha_idx <- alpha_idx[!is.na(alpha_idx)]
@@ -1051,10 +1022,6 @@ beta_reg <- as.numeric(gsub("Mult\\(., as.factor\\(year\\)\\).as.factor\\(code\\
                             "",
                   names(coefficients(LC.poisson.h)[beta_idx])
                   ))
-
-data.table(alpha_reg,
-      inp_dt[year == 2017 & leeftijd == 'Totaal', sum(risk_pop), by = code][code %in% alpha_reg, .(code, V1)]
-      )
 
 ## alpha
 p1 <- ggplot(data.table(reg = alpha_reg,
