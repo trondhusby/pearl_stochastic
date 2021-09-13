@@ -18,8 +18,8 @@ bibliography: stochastic_bib.bib
 ## author: trond
 
 ## set global rchunk options
-knitr::opts_chunk$set(fig.path='../figs/gwr-',
-                      fig.path='../figs/gwr-',
+knitr::opts_chunk$set(fig.path='../figs/stochastic-',
+                      fig.path='../figs/stochastic-',
                       #fig.show='hold',
                results='asis',
                message=FALSE,
@@ -100,9 +100,9 @@ pop_dt <- data.table(cbs_get_data('37713',
 woon_dt <- data.table(cbs_get_data('70072ned',
                                    ##RegioS = has_substring('CR') | has_substring('NL'),
                                    RegioS = has_substring('GM') | has_substring('NL'),
-                                   select = c('Perioden', 'RegioS', 'Nieuwbouwwoningen_91')
+                                   select = c('Perioden', 'RegioS', 'VoorraadOp1Januari_90')
                                    )
-                      )[!is.na(Nieuwbouwwoningen_91),
+                      )[!is.na(VoorraadOp1Januari_90),
                         ][,
                           ':=' (
                               year = as.numeric(gsub('JJ00', '', Perioden)),
@@ -233,17 +233,20 @@ pop_dt_2016gem  <- rbindlist(pop_dt_2016gem)[,
                                                ]
 
 ## recode woon dt to 2016 municipality
-woon_dt_2016gem <- lapply(seq(1995, 2017),
+woon_dt_2016gem <- lapply(seq(1995, 2018),
                           function(x) {
                               woon_dt[code != 1 & year == x,
                                     recode_vector_recursive(dat = .SD,
-                                                            var_name = 'Nieuwbouwwoningen_91',
+                                                            var_name = 'VoorraadOp1Januari_90',
                                                             in_year = x,
                                                             out_year = 2016)
                                     ]
-                         })
+                              })
 
-woon_dt_2016gem  <- rbindlist(woon_dt_2016gem)
+woon_dt_2016gem  <- rbindlist(woon_dt_2016gem)[,
+                                               year := year - 1 ## measured on 01.01
+                                               ]
+
 
 ## merge
 inp_dt <- merge(pop_dt_2016gem[!is.na(risk_pop)],
@@ -270,11 +273,12 @@ inp_wn_dt <- merge(woon_dt_2016gem,
                         ],
                  by = c('code', 'year')
                  )[,
-                   nieuwbouwwoningen_rmean :=  frollmean(Nieuwbouwwoningen_91, n = 3),
+                   woningen_rmean :=  frollmean(VoorraadOp1Januari_90, n = 3),
                    by = c('code')
                    ]
 
-## ggplot(inp_wn_dt[code != 1 & !is.na(nieuwbouwwoningen_rmean)],
+
+## ggplot(inp_wn_dt[code != 1 & !is.na(nieuwbouwoningen_rmean)],
 ##        aes(year, nieuwbouwwoningen_rmean, group = code))  +
 ##     geom_line(aes(col = code)) +
 ##     theme_bw()
@@ -359,32 +363,33 @@ LC.gaussian.reg.pred <- glm(regional_factor ~
 ```{r estimate-models-housing, include = F, cache = T}
 
 ## set starting values for the housing construction trend
-start_k_w <- inp_wn_dt[!is.na(nieuwbouwwoningen_rmean),
-                     mean(nieuwbouwwoningen_rmean),
+start_k_w <- inp_wn_dt[!is.na(woningen_rmean),
+                     mean(woningen_rmean),
                      by = year
                      ][,
                        ##log(V1 / mean(V1))
                        normalise_vec(V1)
                        ]
 
+             
 ## estimate model
-LC.poisson.h <- gnm(nieuwbouwwoningen_rmean ~
+LC.poisson.h <- gnm(woningen_rmean ~
                             log(offset(bevolking)) +
                             as.factor(code)+
                             Mult(as.factor(code), as.factor(year)),
-                        family=poisson(link="log"),
+                        family=gaussian(link = 'log'),
                         start = c(rep(NA, 781), start_k_w),
-                        data= inp_wn_dt[!is.na(nieuwbouwwoningen_rmean)]
+                        data= inp_wn_dt[!is.na(woningen_rmean)]
                     )
 
 ## find index of time-trend coefficients
 tt_ind_h <- match(tt_names, names(coefficients(LC.poisson.h)))
 
-LC.poisson.pred.h <- glm(nieuwbouwwoningen_rmean ~
+LC.poisson.pred.h <- glm(woningen_rmean ~
                             log(offset(bevolking)) +
                             as.factor(code)+
                             as.factor(code)*k,
-                        family=poisson(link="log"),
+                        family=gaussian(link = 'log'),
                         data=merge(inp_wn_dt,
                                    data.table(year = seq(1998, 2017),
                                               k = as.numeric(coefficients(LC.poisson.h)[tt_ind_h])),
@@ -470,8 +475,9 @@ sim_regio[,
 ## temporary data frame for simulation
 tmp_dt <- rbindlist(lapply(seq(1, sim_len),
                            function(x){
-                               inp_wn_dt[year == 2017,
-                                          #-'bevolking'
+                             data.table(inp_wn_dt[!is.na(woningen_rmean)],
+                                        fitted(LC.poisson.h)
+                                        )[year == 2017,
                                           ][,
                                             year := 2017 + x
                                             ]
@@ -498,8 +504,23 @@ sim_woning[,
         ][,
           nieuwbouw_mean := exp(predict(LC.poisson.pred.h, newdata=.SD)),
           by = run
-          ]
-
+          ][,
+            ':=' (net_growth_k = ifelse(year == 2018,
+                                        nieuwbouw_k - V2,
+                                        nieuwbouw_k - shift(nieuwbouw_k)
+                                        ),
+                  net_growth_mean = ifelse(year == 2018,
+                                           nieuwbouw_mean - V2,
+                                           nieuwbouw_mean - shift(nieuwbouw_mean)
+                                           )
+                  ),
+            by = .(code, run)
+            ][,
+              ':=' (woningen_k = V2 + cumsum(net_growth_k),
+                    woningen_mean = V2 + cumsum(net_growth_mean)
+                    ),
+              by = .(code, run)
+              ]
 
 ```
 
@@ -572,8 +593,8 @@ for (gm in seq(1, nrow(gammas))) {
         ## calculate destination attraction
         woning <- sim_woning[year == yr,
                              .(code,
-                               prob_w = nieuwbouw_k/sum(nieuwbouw_k),
-                               prob_m = nieuwbouw_mean/sum(nieuwbouw_mean)
+                               prob_w = woningen_k / sum(woningen_k),
+                               prob_m = woningen_mean / sum(woningen_mean)
                                ),
                              by = run
                              ][,
@@ -612,7 +633,7 @@ for (gm in seq(1, nrow(gammas))) {
 
 ## bind results
 out <- rbindlist(out)
-
+      
 ## ## create lower and upper 50 percent CI
 ## out[,
 ##     c('lower_50CI', 'mean_50CI','upper_50CI') :=
@@ -643,7 +664,7 @@ Een toegevoegde waarde van een volle stochastische methode tov de huidige quasis
 
 Hier ontwikkelen we een methode voor probabilistische voorspellingen van vertrek en woningbouwproductie op basis van tijsdreeksmodellen. De aanpak is gebaseerd op het Lee Carter model, vaak gebruikt om leeftijdspecifieke sterfte of sterftekans te schatten [@booth2006lee]. Het Lee Carter model is inmiddels ook voor migratie toegepast [@wisniowski2015bayesian], voor zowel verhuiskansen als voor aantallen. Voor aantallen is de Poisson versie van het Lee Carter model het meest geschikte [@brouhns2002poisson]. Lee Carter modellen worden meestal gebruikt voor nationale prognoses, en voor demografische variabelen met een leeftijdsdimensie. Hier gebruiken we ze ook voor variabelen met een regio-dimensie, wat, zover ik weet, niet eerder is gedaan.
 
-In deze notitie laat ik zien hoe we Lee Carter modellen kunnen gebruiken om de volgende PEARL-input te voorspellen: leeftijdsspecifieke nationale verhuizingen, regio-specifieke aanpassingsfactoren zoals gebruikt in PEARL en regio-specifieke aantallen nieuwbouwwoningen. Als proof of concept worden de voorgespelde variabelen gecombineerd met een versimpelde cohort-component model voor een Monte Carlo voorspelling van de toekomstige netto migratie en risikobevolking.
+In deze notitie laat ik zien hoe we Lee Carter modellen kunnen gebruiken om de volgende PEARL-input te voorspellen: regio-specifieke aanpassingsfactoren zoals gebruikt in PEARL en regio-specifieke woningvoorraad waarvan we de netto woningbouwproductie kunnen berekenen. Als proof of concept worden de voorgespelde variabelen gecombineerd met een versimpelde cohort-component model voor een Monte Carlo voorspelling van de toekomstige netto migratie en risikobevolking.
 
 # Binnenlandse migratie in PEARL
 
@@ -681,7 +702,7 @@ In PEARL is er een nauwe samenhang tussen netto nieuwbouw en vestiging in een re
 
 # Stochastisch opzet PEARL
 
-Ik stel voor om de regionale factor, $F_{i,t}^{g}$ en het aantal nieuwbouwwoningen $W_{i,t}$ te varieren. Op deze manier kunnen we twee verschillende effecten simuleren: variantie aan de vestigingskant via $W_{i,t}$ en variantie aan de vertrekkant via $F_{i,t}^{g}$.
+Ik stel voor om de regionale factor, $F_{i,t}^{g}$ en het woningvoorraad $W_{i,t}$ te varieren. Op deze manier kunnen we twee verschillende effecten simuleren: variantie aan de vestigingskant via $W_{i,t}$ en variantie aan de vertrekkant via $F_{i,t}^{g}$.
 
 ## Lee Carter modellen
 
@@ -761,10 +782,10 @@ De data gebruikt om de Lee Carter modellen te schatten betreeft tijdsreeksen ove
 
 Voor de tijdsreeksen van $\bar{M}_{i,t}^{g}$ en $W_{i,t}$ worden 3-jaar voortschrijdend gemiddelde gebruikt, wat betekent dat de tijdsreeks voor de regional factor en voor nieuwbouwwoningen van 1998 tot 2017 loopt. De risikobevolking is berekent als het gemiddelde van de bevolking aan het begin en aan het einde van het jaar.
 
-De kant van vestiging wordt zo simpel mogelijk gehouden; in een volschala run zal vestiging immers worden bepaald met PEARL. In deze notitie bereken ik de vestigingskant $\pi_{i,t}$ in regio $i$ als het aandeel nieuwbouwwoningen van de regio in het totaal aantal nieuwbouwwoningen
+De kant van vestiging wordt zo simpel mogelijk gehouden; in een volschala run zal vestiging immers worden bepaald met PEARL. In deze notitie bereken ik de vestigingskant $\pi_{i,t}$ in regio $i$ als het aandeel woningen van de gemeente in het totale woningvoorraad
 
 $$
-\pi_{i,t} = \frac{W_{i,t}}{\sum_{j}W_{j,t}}
+\pi_{i,t} = \frac{W_{i,t}}{\sum_{j} W_{j,t}}
 $$
 
 Dan kunnen we het model van de vergelijkingen (1) - (4) sluiten met de volgende regel voor dynamische ontwikkeling van de risikobevolking:
@@ -786,7 +807,7 @@ tmp_dt <- rbindlist(lapply(seq(1, n_sim),
                                data.table(run = x,
                                           t = time(sims[[x]]$reg),
                                           regionale_factor = sims[[x]]$reg,
-                                          nieuwbouwwoningen = sims[[x]]$woningen
+                                          woningvoorraad = sims[[x]]$woningen
                                           )
                            }))
 
@@ -800,7 +821,7 @@ ggplot(melt(tmp_dt,
     geom_line(aes(group = run, y = mean_val), lty = 'dotted') +
     geom_line(data = melt(data.table(t = time(y_r),
                                      regionale_factor = as.numeric(y_r),
-                                     nieuwbouwwoningen = as.numeric(y_w)
+                                     woningvoorraad = as.numeric(y_w)
                 ),
      id.vars = 't'), aes(y = value), col = 'black') +
     facet_wrap(~variable, scales = 'free', ncol = 2) +
@@ -820,9 +841,10 @@ $$
 
 Van deze vergelijking zien we dat $\gamma_{f} = 0$ bijvoorbeeld betekent dat er met de middenvariant van de regionale factor wordt gewerkt en $\gamma_{f} = 1$ dat we de hele waaier van gesimuleerde waarden van Figuur \@ref(fig:simulations-timetrend) gebruiken.
 
-Figuur \@ref(fig:results-net-migration-time) laat de netto migratie (som over leeftijden) in de vier grote steden zien. In onze nep-model heeft Amsterdam en Utrecht een positieve migratiesaldo en Rotterdam en den Haag een negatieve saldo. Links in het figuur waarin $\gamma_{f} = \gamma_{w} = 0$ wordt voor alle drie variabelen met een middenvariant gewerkt. Niet geheel verrassend is er dan ook geen variatie in de uitkomsten in dit scenario. Het figuur laat zien de variatie niewbouwwoningen ($\gamma_{w}$), gevolgd door de regionale factor ($\gamma_{f}$), de grootste effecten heeft op netto migratie. Aan de rechterkant van het figuur zien ook een bepaalde stapeling van onzekerheid, die ook nog enigszins regionaal verschilt. Het valt op dat het model beweegt richting een evenwicht zonder netto migratie - dit is natuurlijk anders in PEARL.
+Figuur \@ref(fig:results-net-migration-time) laat de netto migratie (som over leeftijden) in de vier grote steden zien. In onze nep-model hebben de vier grote steden een negatieve saldo. Links in het figuur waarin $\gamma_{f} = \gamma_{w} = 0$ wordt voor alle drie variabelen met een middenvariant gewerkt. Niet geheel verrassend is er dan ook geen variatie in de uitkomsten in dit scenario. Het figuur laat zien dat variatie in de regionale factor over het algemeen het grootst effect heeft op de netto migratie, en dat de effecten verschillen tussen de steden. Aan de rechterkant van het figuur zien ook een bepaalde stapeling van onzekerheid, die ook nog enigszins regionaal verschilt. Het valt op dat het model zich beweegt richting een evenwicht zonder netto migratie - dit is natuurlijk anders in PEARL.
 
 ```{r results-net-migration-time, fig.cap = "Netto migratie (totaal) in s' Gravenhage (518), Amsterdam (363), Utrecht (344) en Rotterdam (599)"}
+
 
 ##reg_sel <- c('CR23  ', 'CR26  ', 'CR17  ', 'CR29  ')
 code_names <- c('Rotterdam', 'Amsterdam', 'Utrecht', "'s-Gravenhage")
@@ -831,7 +853,6 @@ code_sel <- sapply(code_names,
                      tmp <- attributes(pop_dt$RegioS)$labels[names(attributes(pop_dt$RegioS)$labels) == x]
                      return(as.numeric(gsub("GM", "", tmp)))
                    })
-
 
 ggplot(melt(out[code %in% code_sel,
            sum(net_migration),
@@ -846,19 +867,18 @@ ggplot(melt(out[code %in% code_sel,
                    list(tmp[2], tmp[6], tmp[10])
                },
              by = c('code', 'variable', 'value', 'year')
-             ],
-       aes(year, V2)) +
-    geom_ribbon(aes(ymin = V1, ymax = V3), fill = 'grey') +
-    geom_line() +
-    facet_grid(code~value, scales = 'free') +
-    theme_bw() +
-    ylab('Netto migratie') +
-    scale_x_continuous(breaks = c(2020, 2030, 2040), labels = c(2020, 2030, 2040))
+             ], aes(year, V2)) +
+  geom_ribbon(aes(ymin = V1, ymax = V3), fill = 'grey') +
+  geom_line() +
+  facet_grid(code~value, scales = 'free') +
+  theme_bw() +
+  ylab('Netto migratie') +
+  scale_x_continuous(breaks = c(2020, 2030, 2040), labels = c(2020, 2030, 2040))
 
 ```
 
 
-De ontwikkeling van de (totale) risikobevolking in de vier groote gemeenten is te zien in Figuur \@ref(fig:results-regional). De zwarte lijnen in het figuur is de gemiddelde voorspelling en het grijz gebied om de lijn 80 procent onzekerheidsmarges. Aan de linkerkant in de figuur heeft woningbouw geen invloed op vestiging ($gamma_{w} = 0$); hier zien we dat de bevolkingsontwikkeling bijna volledig wordt gedreven door verandering in het migratiesaldo. Hierdoor zijn de onzekerheidsmarges ook relatief klein. De bandbeedtes worden groter als we woningbouw ook laten varieren.
+De ontwikkeling van de (totale) risikobevolking in de vier groote gemeenten is te zien in Figuur \@ref(fig:results-regional). De zwarte lijnen in het figuur is de gemiddelde voorspelling en het grijz gebied om de lijn 80 procent onzekerheidsmarges. Aan de linkerkant in de figuur heeft woningbouw geen invloed op vestiging ($gamma_{w} = 0$) en we zien grote verschillen tussen de steden. Ondanks dat de regionale factor groter effect heeft op de risikobevolking dan woningbouw, worden de bandbreedtes wel groter als we woningbouw ook laten varieren.
 
 ```{r results-regional, fig.cap = "Risikobevolking (totaal) in s' Gravenhage (518), Amsterdam (363), Utrecht (344) en Rotterdam (599)"}
 
@@ -916,11 +936,11 @@ ggplot(out[code %in% code_sel & year %in% seq(2020, 2040, by = 10),
 
 # Conclusies, opmerkingen en hoe verder
 
-In dit document heb ik een voorstel gemaakt voor en stochastische simulatiemethode geschikt voor PEARL. De groote voordeel van deze methode is de dimensionaliteitsreductie: de test die ik hier heb gegraaid kunnen we bijna direct toepassen in PEARL. Zover ik weet is het Lee Carter model nooit toegepast op regionale prognoses, in die opzicht is dit ook nieuw.
+In dit document heb ik een voorstel gemaakt voor en stochastische simulatiemethode geschikt voor PEARL. De groote voordeel van deze methode is de dimensionaliteitsreductie: de test die ik hier heb gegraaid kunnen we bijna direct toepassen in PEARL. Zover ik weet is het Lee Carter model nooit toegepast op regionale prognoses, in die opzicht is dit ook nieuw in de literatuur.
 
-De resultaten hier suggereren dat de meeste variatie in netto migratie en risikobevolking kwam door variatie verandering in nieuwbouwwoningen. Dit is een gevolg van het feit dat nieuwbouwwoningen een directe invloed heeft op de vestigingskans. In PEARL, waar woningbouw een ander rol heeft, is de relatieve invloed van die twee factoren anders.
+De resultaten hier suggereren dat de meeste variatie in netto migratie en risikobevolking kwam door variatie verandering in de regionale factor, maar ook dat de onzekerheid toenam als we zowel de regionale factor als nieuwbouw tegelijk varieerden. Deze resultaten zijn uiteraard een gevolg van de eenvoudige formule voor update van de bevolking. In PEARL, waar woningbouwproducie een ander rol heeft, is de relatieve invloed van die twee factoren anders.
 
-Dit document moet worden gezien als stap naar een 'proof-of-concept'. De resultaten in de vorige sectie laten met name zien hoe het zou kunnen werken in de context van PEARL, maar door de aannames zijn de resultaten ook niet erg realistisch. De geschatte Lee Carter modellen zouden we beter naar moeten kijken. Er zijn een aantal andere schattingsmethode's die wellicht nauwkeuriger zijn dan die die ik hier heb gebruikt. Bijvoorbeeld Structural Value Decomposition is een andere bekende optie hiervoor [@stoeldraijer2013impact].
+Dit document moet worden gezien als een 'proof-of-concept'. De resultaten in de vorige sectie laten met name zien hoe het zou kunnen werken in de context van PEARL, maar door de aannames zijn de resultaten ook niet noodzakelijk realistisch. De geschatte Lee Carter modellen zouden we beter naar moeten kijken. Er zijn een aantal andere schattingsmethode's die wellicht nauwkeuriger zijn dan die die ik hier heb gebruikt. Bijvoorbeeld Structural Value Decomposition is een andere bekende optie hiervoor [@stoeldraijer2013impact].
 
 Een uitdaging met de Monte Carlo method zoals hier voorgesteld is dat de bandbreedtes mogelijk erg groot kunnen worden [@renshaw2008simulation]. Een optie is om een meer gerichte Monte Carlo, waarin stochastische simulaties worden gecombineerd met expert judgment. Hierbij een suggestie van de PBL-thuisexpert Andries: "Trek voor een bepaalde regio een bepaalde waarde uit de verdeling van de regionale factor (en hou voor de andere regio’s de regionale factor gelijk aan de prognose) en trek voor de omliggende gemeenten (van die specifieke regio) uit de verdeling van de  woningbouw. Deze waarden kun je dan in PEARL stoppen. Per regio zou je dit volgens de principes van Monte Carlo modelering een flink aantal keren moeten doen, bv. 50 keer. Dit betekent dat je dan - in de cloud - PEARL het aantal regio’s (in principe alle gemeenten) * 50 keer moeten runnen (uitgaande van b.v. 400 gemeenten dus rond 20 duizend runs)."
 
@@ -941,9 +961,9 @@ ggplot(inp_dt[!is.na(regional_factor)],
 
 ```
 
-```{r descriptive-plots3, fig.cap = "Nieuwbouwwoningen (landelijk)", cache = T}
+```{r descriptive-plots3, fig.cap = "Woningvoorraad (landelijk)", cache = T}
 
-ggplot(woon_dt[RegioS == 'NL01  '], aes(year, Nieuwbouwwoningen_91)) +
+ggplot(woon_dt[RegioS == 'NL01  '], aes(year, VoorraadOp1Januari_90)) +
     geom_line() +
     theme_bw()
 
@@ -1077,7 +1097,7 @@ ggplot(sim_regio[code %in% code_sel], aes(year, regional_factor_k)) +
 ggplot(sim_woning[code %in% code_sel], aes(year, nieuwbouw_k)) +
     geom_line(aes(group = run), col = 'grey', alpha = 0.4) +
     geom_line(aes(group = run, y = nieuwbouw_mean), lty = 'dotted') +
-    geom_line(data = inp_wn_dt[code %in% code_sel & !is.na(nieuwbouwwoningen_rmean)], aes(y = nieuwbouwwoningen_rmean))  +
+    geom_line(data = inp_wn_dt[code %in% code_sel & !is.na(woningen_rmean)], aes(y = woningen_rmean))  +
     facet_wrap(~code) +
     theme_bw() +
     ggtitle('Woningen')

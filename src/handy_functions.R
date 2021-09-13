@@ -249,3 +249,12 @@ recode_matrix_recursive <- function(dat, var_name, in_year, out_year, dir = 'for
     out[, year := in_year]
     return(out)
 }
+
+## 5 % MC CI
+ci_5p <- function(val, side) {
+    if (side == 'lwr') {
+        quantile(val, probs = seq(0, 1, 0.025))[2] 
+    } else if (side == 'upr') {
+        quantile(val, probs = seq(0, 1, 0.025))[40] 
+    }
+}

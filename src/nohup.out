@@ -1,0 +1,41 @@
+Error: unexpected symbol in:
+"                           data = inp_dt[leeftijd != 'Totaal' & year > 1997,
+             as.factor(code)                           ."
+Execution halted
+Initialising
+Running start-up iterations..
+Running main iterations...................................
+Done
+Initialising
+Running start-up iterations..
+Running main iterations.........................................................
+...
+Done
+There were 50 or more warnings (use warnings() to see the first 50)
+Initialising
+Running start-up iterations..
+Running main iterations...................................
+Done
+Initialising
+Running start-up iterations..
+Running main iterations.........................................................
+...
+Done
+There were 50 or more warnings (use warnings() to see the first 50)
+Error in simulate(rf_mod, nsim = sim_len_rf) : object 'rf_mod' not found
+Calls: lapply -> FUN -> data.table -> simulate
+Execution halted
+Initialising
+Running start-up iterations..
+Running main iterations...................................
+Done
+Initialising
+Running start-up iterations..
+Running main iterations.........................................................
+...
+Done
+There were 50 or more warnings (use warnings() to see the first 50)
+Error in optim(par = rep(1, .N), mse_fn, x = regional_factor_k, y = pearl_input,  : 
+  L-BFGS-B needs finite values of 'fn'
+Calls: [ -> [.data.table -> optim
+Execution halted
